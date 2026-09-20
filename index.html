@@ -158,24 +158,32 @@
       formData.append("fileName", fileName);
       formData.append("mimeType", file.type);
 
-      // إرسال الطلب بوضع no-cors لضمان نجاح الاتصال بدون اعتراض المتصفح
-      await fetch(GOOGLE_SCRIPT_URL, {
+      // رفع الملف وجلب الرابط المباشر
+      const driveResponse = await fetch(GOOGLE_SCRIPT_URL, {
         method: "POST",
-        mode: "no-cors",
         headers: {
-          "Content-Type": "application/x-www-form-urlencoded"
+          "Content-Type": "application/x-www-form-urlencoded;charset=utf-8"
         },
         body: formData.toString()
       });
 
+      const driveResult = await driveResponse.json();
+
+      if (driveResult.status !== "success" || !driveResult.fileUrl) {
+        throw new Error(driveResult.message || "فشل الحصول على رابط السيرة الذاتية");
+      }
+
+      const cvUrl = driveResult.fileUrl;
+
       submitBtn.innerText = "جاري حفظ بيانات الطلب...";
 
-      // حفظ البيانات بـ Firebase
+      // حفظ الطلب في Firebase مع الرابط المباشر cvLink
       await addDoc(collection(db, "applicants"), {
         name: document.getElementById('name').value,
         jobTitle: document.getElementById('jobTitle').value,
         nationality: document.getElementById('nationality').value,
         bio: document.getElementById('bio').value,
+        cvLink: cvUrl,
         cvFileName: fileName,
         photoLink: document.getElementById('photoLink').value || '',
         createdAt: serverTimestamp()
