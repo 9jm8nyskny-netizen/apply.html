@@ -49,6 +49,11 @@
             box-sizing: border-box;
             font-size: 14px;
         }
+        input[type="file"] {
+            padding: 8px;
+            background: #1e293b;
+            cursor: pointer;
+        }
         input:focus, textarea:focus {
             outline: none;
             border-color: #38bdf8;
@@ -69,6 +74,10 @@
         button:hover {
             background: #14b8a6;
         }
+        button:disabled {
+            background: #475569;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -86,10 +95,10 @@
         <input type="text" id="nationality" required placeholder="مثال: مصري / سوداني">
 
         <label>نبذة مختصرة</label>
-        <textarea id="bio" rows="3" placeholder="حاصل على شهادة PMP متواجد في عسير..."></textarea>
+        <textarea id="bio" rows="3" placeholder="اكتب نبذة مختصرة عن خبراتك..."></textarea>
 
-        <label>رابط السيرة الذاتية (Google Drive Viewer)</label>
-        <input type="url" id="cvLink" required placeholder="https://drive.google.com/file/d/...">
+        <label>رفع السيرة الذاتية (ملف PDF)</label>
+        <input type="file" id="cvFile" accept=".pdf" required>
 
         <label>رابط الصورة الشخصية (اختياري)</label>
         <input type="url" id="photoLink" placeholder="رابط صورة مباشر أو من Drive">
@@ -103,7 +112,10 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
   import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-  // مفاتيح مشروعك الخاصة
+  // رابط الخدمة الخاصة بك في Google Apps Script
+  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwoEAKNTDKDrSnqJjHHdCA8bQ-BPvP-040zAqbxT5Vw8WjL5XOw5K2EqoQOZIMu40f8AA/exec";
+
+  // مفاتيح مشروعك الخاصة في Firebase
   const firebaseConfig = {
     apiKey: "AIzaSyB_hSgJqz3REmSLVaa8XHC6z874xpwTags",
     authDomain: "applying-for-a-job-bf297.firebaseapp.com",
@@ -115,34 +127,73 @@
     measurementId: "G-1XG4K2JMJG"
   };
 
-  // تهيئة التطبيق وقاعدة البيانات
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
-  // دالة إرسال النموذج إلى Firestore
+  // تحويل ملف الـ PDF إلى Base64 لإرساله عبر البرمجة
+  const fileToBase64 = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = (error) => reject(error);
+  });
+
   document.getElementById('applyForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     
     const submitBtn = document.getElementById('submitBtn');
+    const fileInput = document.getElementById('cvFile');
+    const file = fileInput.files[0];
+
+    if (!file) {
+      alert("يرجى اختيار ملف السيرة الذاتية (PDF).");
+      return;
+    }
+
     submitBtn.disabled = true;
-    submitBtn.innerText = "جاري إرسال الطلب...";
+    submitBtn.innerText = "جاري رفع الملف إلى Google Drive...";
 
     try {
+      // 1. إرسال الملف لرفعه على Google Drive
+      const base64File = await fileToBase64(file);
+      const payload = {
+        file: base64File,
+        fileName: `${document.getElementById('name').value}_CV.pdf`,
+        mimeType: file.type
+      };
+
+      const driveResponse = await fetch(GOOGLE_SCRIPT_URL, {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+
+      const driveResult = await driveResponse.json();
+
+      if (driveResult.status !== "success") {
+        throw new Error(driveResult.message || "فشل رفع الملف إلى Google Drive");
+      }
+
+      const cvDriveUrl = driveResult.fileUrl;
+
+      submitBtn.innerText = "جاري حفظ الطلب...";
+
+      // 2. تسجيل البيانات والرابط المباشر في قاعدة البيانات Firestore
       await addDoc(collection(db, "applicants"), {
         name: document.getElementById('name').value,
         jobTitle: document.getElementById('jobTitle').value,
         nationality: document.getElementById('nationality').value,
         bio: document.getElementById('bio').value,
-        cvLink: document.getElementById('cvLink').value,
+        cvLink: cvDriveUrl, // رابط السيرة الذاتية المرفوعة على Drive
         photoLink: document.getElementById('photoLink').value || '',
         createdAt: serverTimestamp()
       });
 
-      alert("تم إرسال طلبك بنجاح! شكراً لك.");
+      alert("تم رفع السيرة الذاتية إلى Google Drive وإرسال الطلب بنجاح!");
       document.getElementById('applyForm').reset();
+
     } catch (error) {
-      console.error("خطأ في الإرسال: ", error);
-      alert("حدث خطأ أثناء إرسال البيانات، يرجى التأكد من الاتصال والدخول مجدداً.");
+      console.error("خطأ: ", error);
+      alert("حدث خطأ أثناء الإرسال: " + error.message);
     } finally {
       submitBtn.disabled = false;
       submitBtn.innerText = "إرسال الطلب";
