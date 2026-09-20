@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>استمارة التقديم على الوظائف</title>
-    <!-- مكتبة تحويل صفحات الـ PDF إلى صور خفيفة جداً -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <style>
         body {
@@ -28,63 +27,20 @@
             box-shadow: 0 10px 25px rgba(0,0,0,0.4);
             border: 1px solid #334155;
         }
-        h2 {
-            text-align: center;
-            color: #38bdf8;
-            margin-top: 0;
-            margin-bottom: 20px;
+        h2 { text-align: center; color: #38bdf8; margin-top: 0; margin-bottom: 20px; }
+        label { display: block; margin-top: 15px; font-size: 14px; color: #94a3b8; }
+        .hint { font-size: 12px; color: #38bdf8; margin-top: 5px; }
+        input {
+            width: 100%; padding: 12px; margin-top: 6px; border-radius: 6px;
+            border: 1px solid #334155; background: #0f172a; color: #fff; box-sizing: border-box; font-size: 14px;
         }
-        label {
-            display: block;
-            margin-top: 15px;
-            font-size: 14px;
-            color: #94a3b8;
-        }
-        .hint {
-            font-size: 12px;
-            color: #38bdf8;
-            margin-top: 5px;
-        }
-        input, textarea {
-            width: 100%;
-            padding: 12px;
-            margin-top: 6px;
-            border-radius: 6px;
-            border: 1px solid #334155;
-            background: #0f172a;
-            color: #fff;
-            box-sizing: border-box;
-            font-size: 14px;
-        }
-        input[type="file"] {
-            padding: 8px;
-            background: #1e293b;
-            cursor: pointer;
-        }
-        input:focus, textarea:focus {
-            outline: none;
-            border-color: #38bdf8;
-        }
+        input[type="file"] { padding: 8px; background: #1e293b; cursor: pointer; }
         button {
-            width: 100%;
-            padding: 12px;
-            margin-top: 25px;
-            background: #0d9488;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 16px;
-            transition: background 0.2s;
+            width: 100%; padding: 12px; margin-top: 25px; background: #0d9488;
+            color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px;
         }
-        button:hover {
-            background: #14b8a6;
-        }
-        button:disabled {
-            background: #475569;
-            cursor: not-allowed;
-        }
+        button:hover { background: #14b8a6; }
+        button:disabled { background: #475569; cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -107,13 +63,13 @@
         <label>الوظيفة المتقدم عليها <span style="color:#ef4444">*</span></label>
         <input type="text" id="jobTitle" required placeholder="مثال: مهندس تصميم داخلي">
 
-        <label>📄 رفع السيرة الذاتية (ملف PDF) <span style="color:#ef4444">*</span></label>
+        <label>📄 رفع السيرة الذاتية (ملف PDF أو صورة) <span style="color:#ef4444">*</span></label>
         <input type="file" id="cvFile" accept=".pdf,image/*" required>
 
         <label>📁 رفع ملف الأعمال (Portfolio - اختياري)</label>
         <input type="file" id="portfolioFile" accept=".pdf,image/*">
 
-        <div class="hint">⚡ يتم ضغط ومعالجة المرفقات تلقائياً لضمان السرعة.</div>
+        <div class="hint">⚡ معالجة وتحسين المرفقات للفتح الفوري.</div>
 
         <button type="submit" id="submitBtn">إرسال الطلب</button>
     </form>
@@ -137,14 +93,12 @@
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
-  // إعداد مكتبة PDF.js
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-  // دالة تحويل وضغط الملفات أو الـ PDF المرفوعة
-  const processAndCompressFile = async (file) => {
+  // معالجة وتحسين أبعاد الصورة لمنع تعليق المتصفح والشاشة السوداء
+  const processFileOptimized = async (file) => {
     if (!file) return '';
 
-    // إذا كان الملف صورة
     if (file.type.startsWith('image/')) {
       return new Promise((resolve) => {
         const reader = new FileReader();
@@ -154,42 +108,43 @@
           img.src = e.target.result;
           img.onload = () => {
             const canvas = document.createElement('canvas');
-            const maxWidth = 800;
+            const maxDimension = 1200;
             let width = img.width;
             let height = img.height;
-            if (width > maxWidth) {
-              height = Math.round((height * maxWidth) / width);
-              width = maxWidth;
+
+            if (width > height && width > maxDimension) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else if (height > maxDimension) {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
             }
+
             canvas.width = width;
             canvas.height = height;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.5));
+            resolve(canvas.toDataURL('image/jpeg', 0.65));
           };
         };
       });
     }
 
-    // إذا كان الملف PDF
     if (file.type.includes('pdf')) {
       try {
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        const page = await pdf.getPage(1); // أخذ الصفحة الأولى
+        const page = await pdf.getPage(1);
         
-        const viewport = page.getViewport({ scale: 1.0 });
+        const viewport = page.getViewport({ scale: 1.2 });
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.height = viewport.height;
         canvas.width = viewport.width;
 
         await page.render({ canvasContext: ctx, viewport: viewport }).promise;
-        
-        // إرجاع الصورة المضغوطة للغاية من الـ PDF
-        return canvas.toDataURL('image/jpeg', 0.5);
+        return canvas.toDataURL('image/jpeg', 0.65);
       } catch (e) {
-        console.warn("خطأ تحويل الـ PDF، جاري الاستخدام المباشر:", e);
         return new Promise((resolve) => {
           const reader = new FileReader();
           reader.readAsDataURL(file);
@@ -197,7 +152,6 @@
         });
       }
     }
-
     return '';
   };
 
@@ -209,22 +163,17 @@
     const photoInput = document.getElementById('photoFile').files[0];
     const portfolioInput = document.getElementById('portfolioFile').files[0];
 
-    if (!cvInput) {
-      alert("يرجى اختيار ملف السيرة الذاتية.");
-      return;
-    }
-
     submitBtn.disabled = true;
-    submitBtn.innerText = "⏳ جاري تحسين وضغط الملفات...";
+    submitBtn.innerText = "⏳ جاري تحسين المرفقات للفتح الفوري...";
 
     try {
       const [photoData, cvData, portfolioData] = await Promise.all([
-        processAndCompressFile(photoInput),
-        processAndCompressFile(cvInput),
-        processAndCompressFile(portfolioInput)
+        processFileOptimized(photoInput),
+        processFileOptimized(cvInput),
+        processFileOptimized(portfolioInput)
       ]);
 
-      submitBtn.innerText = "📤 جاري حفظ البيانات...";
+      submitBtn.innerText = "📤 جاري حفظ الطلب...";
 
       await addDoc(collection(db, "applicants"), {
         name: document.getElementById('name').value,
@@ -247,12 +196,11 @@
         createdAt: serverTimestamp()
       });
 
-      alert("تم إرسال وحفظ الطلب والمرفقات بنجاح!");
+      alert("تم إرسال الطلب والمرفقات بنجاح!");
       document.getElementById('applyForm').reset();
 
     } catch (error) {
-      console.error("خطأ: ", error);
-      alert("حدث خطأ أثناء إرسال الطلب: " + error.message);
+      alert("حدث خطأ: " + error.message);
     } finally {
       submitBtn.disabled = false;
       submitBtn.innerText = "إرسال الطلب";
