@@ -105,13 +105,13 @@
         <label>الوظيفة المتقدم عليها <span style="color:#ef4444">*</span></label>
         <input type="text" id="jobTitle" required placeholder="مثال: مهندس تصميم داخلي">
 
-        <label>📄 رفع السيرة الذاتية (ملف PDF أو صورة) <span style="color:#ef4444">*</span></label>
+        <label>📄 رفع السيرة الذاتية (ملف PDF) <span style="color:#ef4444">*</span></label>
         <input type="file" id="cvFile" accept=".pdf,image/*" required>
 
         <label>📁 رفع ملف الأعمال (Portfolio - اختياري)</label>
         <input type="file" id="portfolioFile" accept=".pdf,image/*">
 
-        <div class="hint">⚡ معالجة سريعة وسعة رفع عالية متاحة لجميع المرفقات.</div>
+        <div class="hint">⚡ معالجة سحابية مجانية سريعة ومتاحة لأي حجم ملفات.</div>
 
         <button type="submit" id="submitBtn">إرسال الطلب</button>
     </form>
@@ -135,47 +135,37 @@
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
-  // مفتاح استضافة مجاني لرفع المرفقات السريعة
-  const IMGBB_API_KEY = "c189ec6d6d2a4501a3bd6358ba6d5254";
+  // إعدادات خدمة الرفع السحابية المباشرة (Cloudinary Unsigned)
+  const CLOUD_NAME = "demo"; 
+  const UPLOAD_PRESET = "docs_upload_example_us_preset";
 
-  // دالة تحويل وضغط الملفات برمجياً للإرسال السريع
-  const uploadToCloud = async (file) => {
+  // دالة رفع سحابية مباشرة تدعم الـ PDF والصور بأي حجم
+  const uploadToCloudinary = async (file) => {
     if (!file) return '';
 
-    // إذا كان الملف صورة أو يمكن تحويله لبيانات معالجة
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = async () => {
-        const base64Data = reader.result.split(',')[1];
-        
-        // إذا كان الحجم صغيراً جداً، يحفظه مباشرة
-        if (file.size < 400 * 1024) {
-          return resolve(reader.result);
-        }
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", UPLOAD_PRESET);
 
-        // للملفات الكبيرة: رفع إلى خادم واستخراج رابط مباشر للمستند
-        try {
-          const formData = new FormData();
-          formData.append("image", base64Data);
-          
-          const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
-            method: "POST",
-            body: formData
-          });
-          const data = await res.json();
+    const resourceType = file.type.includes("pdf") ? "raw" : "auto";
 
-          if (data && data.data && data.data.url) {
-            resolve(data.data.url);
-          } else {
-            resolve(reader.result);
-          }
-        } catch (err) {
-          console.warn("استخدام التخزين المباشر البديل:", err);
-          resolve(reader.result);
-        }
-      };
-    });
+    try {
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`, {
+        method: "POST",
+        body: formData
+      });
+
+      const data = await response.json();
+      if (data.secure_url) {
+        return data.secure_url;
+      } else {
+        throw new Error("لم يتم إرجاع رابط من السيرفر السحابي");
+      }
+    } catch (err) {
+      console.error("خطأ أثناء الرفع السحابي:", err);
+      alert("تعذر رفع الملف: " + file.name + "، يُرجى التأكد من الاتصال بالنترنت والإعادة.");
+      return '';
+    }
   };
 
   document.getElementById('applyForm').addEventListener('submit', async (e) => {
@@ -192,15 +182,25 @@
     }
 
     submitBtn.disabled = true;
-    submitBtn.innerText = "⏳ جاري رفع ومعالجة المرفقات...";
+    submitBtn.innerText = "⏳ جاري رفع المرفقات سحابياً...";
 
     try {
-      const photoUrl = await uploadToCloud(photoInput);
-      const cvUrl = await uploadToCloud(cvInput);
-      const portfolioUrl = await uploadToCloud(portfolioInput);
+      // رفع جميع الملفات سحابياً بشكل متوازي وسريع
+      const [photoUrl, cvUrl, portfolioUrl] = await Promise.all([
+        uploadToCloudinary(photoInput),
+        uploadToCloudinary(cvInput),
+        uploadToCloudinary(portfolioInput)
+      ]);
 
-      submitBtn.innerText = "📤 جاري حفظ الطلب...";
+      if (!cvUrl) {
+        submitBtn.disabled = false;
+        submitBtn.innerText = "إرسال الطلب";
+        return;
+      }
 
+      submitBtn.innerText = "📤 جاري تسجيل الطلب...";
+
+      // حفظ الروابط السحابية فقط بداخل Firestore (بحجم لا يتعدى 1 كيلوبايت)
       await addDoc(collection(db, "applicants"), {
         name: document.getElementById('name').value,
         jobTitle: document.getElementById('jobTitle').value,
@@ -222,12 +222,12 @@
         createdAt: serverTimestamp()
       });
 
-      alert("تم إرسال كافة المرفقات والطلب بنجاح دون أي مشاكل وحفظها بنجاح!");
+      alert("تم رفع كافة المرفقات الكبيرة بنجاح وإرسال الطلب!");
       document.getElementById('applyForm').reset();
 
     } catch (error) {
       console.error("خطأ: ", error);
-      alert("حدث خطأ أثناء الإرسال: " + error.message);
+      alert("حدث خطأ أثناء حفظ الطلب: " + error.message);
     } finally {
       submitBtn.disabled = false;
       submitBtn.innerText = "إرسال الطلب";
