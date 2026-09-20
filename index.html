@@ -54,8 +54,11 @@
         <label>الاسم <span style="color:#ef4444">*</span></label>
         <input type="text" id="name" required>
 
-        <label>🌍 الجنسية</label>
+        <label>🌍 الجنسية <span style="color:#ef4444">*</span></label>
         <input type="text" id="nationality" required>
+
+        <label>📍 في أي مدينة متواجد؟ <span style="color:#ef4444">*</span></label>
+        <input type="text" id="city" required placeholder="مثال: جدة، الرياض">
 
         <label>رقم الجوال</label>
         <input type="tel" id="phone" placeholder="05xxxxxxxx">
@@ -178,6 +181,7 @@
         name: document.getElementById('name').value,
         jobTitle: document.getElementById('jobTitle').value,
         nationality: document.getElementById('nationality').value,
+        city: document.getElementById('city').value,
         phone: document.getElementById('phone').value || '',
         
         cvLink: cvData,
