@@ -90,8 +90,8 @@
 <div class="form-card">
     <h2>تقديم طلب توظيف</h2>
     <form id="applyForm">
-        <label>🖼️ رابط الصورة الشخصية (اختياري)</label>
-        <input type="url" id="photoLink" placeholder="https://...">
+        <label>🖼️ رفع الصورة الشخصية (اختياري)</label>
+        <input type="file" id="photoFile" accept="image/*">
 
         <label>الاسم <span style="color:#ef4444">*</span></label>
         <input type="text" id="name" required placeholder="مثال: رمضان حسن احمد">
@@ -107,10 +107,11 @@
 
         <label>📄 رفع السيرة الذاتية (ملف PDF) <span style="color:#ef4444">*</span></label>
         <input type="file" id="cvFile" accept=".pdf" required>
-        <div class="hint">💡 يُرجى التأكد من أن حجم الملف أقل من 700 كيلوبايت لضمان سرعة الإرسال.</div>
 
-        <label>📁 رابط ملف الأعمال (Portfolio - اختياري)</label>
-        <input type="url" id="portfolioLink" placeholder="رابط Google Drive أو LinkedIn">
+        <label>📁 رفع ملف الأعمال (Portfolio - اختياري)</label>
+        <input type="file" id="portfolioFile" accept=".pdf,image/*">
+
+        <div class="hint">💡 يُرجى التأكد أن المرفقات أحجامها مناسبة وسريعة التحميل.</div>
 
         <button type="submit" id="submitBtn">إرسال الطلب</button>
     </form>
@@ -134,7 +135,9 @@
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
+  // دالة تحويل أي ملف لمسار نصي محفوظ
   const fileToDataURL = (file) => new Promise((resolve, reject) => {
+    if (!file) return resolve('');
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = () => resolve(reader.result);
@@ -145,27 +148,32 @@
     e.preventDefault();
     
     const submitBtn = document.getElementById('submitBtn');
-    const fileInput = document.getElementById('cvFile');
-    const file = fileInput.files[0];
+    const cvInput = document.getElementById('cvFile').files[0];
+    const photoInput = document.getElementById('photoFile').files[0];
+    const portfolioInput = document.getElementById('portfolioFile').files[0];
 
-    if (!file) {
+    if (!cvInput) {
       alert("يرجى اختيار ملف السيرة الذاتية.");
       return;
     }
 
-    // Failsafe: التأكد من حجم الملف (أقل من 700 كيلوبايت)
-    const MAX_ALLOWED_SIZE = 700 * 1024; // 700 KB
-    if (file.size > MAX_ALLOWED_SIZE) {
-      alert("حجم ملف السيرة الذاتية كبير (يتجاوز 700 كيلوبايت).\n\nيرجى اختيار ملف بحجم أصغر أو ضغط الملف أولاً لضمان حفظ الطلب بنجاح.");
+    // فحص إجمالي الأحجام لضمان عدم تجاوز حدود القاعدة
+    let totalSize = cvInput.size + (photoInput ? photoInput.size : 0) + (portfolioInput ? portfolioInput.size : 0);
+    if (totalSize > 900 * 1024) {
+      alert("إجمالي حجم الملفات المرفوعة كبير جداً.\nيرجى تقليل حجم المرفقات لضمان نجاح عملية الإرسال.");
       return;
     }
 
     submitBtn.disabled = true;
-    submitBtn.innerText = "جاري تجهيز وإرسال الطلب...";
+    submitBtn.innerText = "جاري رفع وإرسال البيانات...";
 
     try {
-      const cvDataUrl = await fileToDataURL(file);
-      const portfolioVal = document.getElementById('portfolioLink').value.trim();
+      // تحويل جميع الملفات المرفوعة إلى بيانات مخزنة
+      const [cvData, photoData, portfolioData] = await Promise.all([
+        fileToDataURL(cvInput),
+        fileToDataURL(photoInput),
+        fileToDataURL(portfolioInput)
+      ]);
 
       await addDoc(collection(db, "applicants"), {
         name: document.getElementById('name').value,
@@ -173,23 +181,30 @@
         nationality: document.getElementById('nationality').value,
         phone: document.getElementById('phone').value || '',
         
-        cvLink: cvDataUrl,
-        cvUrl: cvDataUrl,
-        cv: cvDataUrl,
+        // حفظ السيرة الذاتية
+        cvLink: cvData,
+        cvUrl: cvData,
+        cv: cvData,
 
-        portfolioLink: portfolioVal,
-        portfolioUrl: portfolioVal,
-        portfolio: portfolioVal,
-        photoLink: document.getElementById('photoLink').value || '',
+        // حفظ ملف الأعمال (Portfolio)
+        portfolioLink: portfolioData,
+        portfolioUrl: portfolioData,
+        portfolio: portfolioData,
+
+        // حفظ الصورة الشخصية
+        photoLink: photoData,
+        photoUrl: photoData,
+        photo: photoData,
+
         createdAt: serverTimestamp()
       });
 
-      alert("تم إرسال طلبك وسيرتك الذاتية بنجاح!");
+      alert("تم إرسال كافة المرفقات والطلب بنجاح!");
       document.getElementById('applyForm').reset();
 
     } catch (error) {
       console.error("خطأ: ", error);
-      alert("حدث خطأ أثناء حفظ الطلب: " + error.message);
+      alert("حدث خطأ أثناء الحفظ: " + error.message);
     } finally {
       submitBtn.disabled = false;
       submitBtn.innerText = "إرسال الطلب";
