@@ -112,10 +112,9 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
   import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-  // رابط الخدمة الخاصة بك في Google Apps Script
+  // رابط Google Apps Script المعتمد الخاص بك
   const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwoEAKNTDKDrSnqJjHHdCA8bQ-BPvP-040zAqbxT5Vw8WjL5XOw5K2EqoQOZIMu40f8AA/exec";
 
-  // مفاتيح مشروعك الخاصة في Firebase
   const firebaseConfig = {
     apiKey: "AIzaSyB_hSgJqz3REmSLVaa8XHC6z874xpwTags",
     authDomain: "applying-for-a-job-bf297.firebaseapp.com",
@@ -130,7 +129,6 @@
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
-  // تحويل ملف الـ PDF إلى Base64 لإرساله عبر البرمجة
   const fileToBase64 = (file) => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -154,7 +152,6 @@
     submitBtn.innerText = "جاري رفع الملف إلى Google Drive...";
 
     try {
-      // 1. إرسال الملف لرفعه على Google Drive
       const base64File = await fileToBase64(file);
       const payload = {
         file: base64File,
@@ -164,7 +161,12 @@
 
       const driveResponse = await fetch(GOOGLE_SCRIPT_URL, {
         method: "POST",
-        body: JSON.stringify(payload)
+        mode: "cors",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8",
+        },
+        body: JSON.stringify(payload),
+        redirect: "follow"
       });
 
       const driveResult = await driveResponse.json();
@@ -177,18 +179,17 @@
 
       submitBtn.innerText = "جاري حفظ الطلب...";
 
-      // 2. تسجيل البيانات والرابط المباشر في قاعدة البيانات Firestore
       await addDoc(collection(db, "applicants"), {
         name: document.getElementById('name').value,
         jobTitle: document.getElementById('jobTitle').value,
         nationality: document.getElementById('nationality').value,
         bio: document.getElementById('bio').value,
-        cvLink: cvDriveUrl, // رابط السيرة الذاتية المرفوعة على Drive
+        cvLink: cvDriveUrl,
         photoLink: document.getElementById('photoLink').value || '',
         createdAt: serverTimestamp()
       });
 
-      alert("تم رفع السيرة الذاتية إلى Google Drive وإرسال الطلب بنجاح!");
+      alert("تم رفع السيرة الذاتية وإرسال الطلب بنجاح!");
       document.getElementById('applyForm').reset();
 
     } catch (error) {
