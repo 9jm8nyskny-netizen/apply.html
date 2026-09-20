@@ -112,7 +112,6 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
   import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-  // رابط Google Apps Script المعتمد الخاص بك
   const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwoEAKNTDKDrSnqJjHHdCA8bQ-BPvP-040zAqbxT5Vw8WjL5XOw5K2EqoQOZIMu40f8AA/exec";
 
   const firebaseConfig = {
@@ -153,20 +152,19 @@
 
     try {
       const base64File = await fileToBase64(file);
-      const payload = {
-        file: base64File,
-        fileName: `${document.getElementById('name').value}_CV.pdf`,
-        mimeType: file.type
-      };
+
+      // إرسال البيانات بفرمتة Form URL Encoded لتجنب مشكلة CORS
+      const formData = new URLSearchParams();
+      formData.append("file", base64File);
+      formData.append("fileName", `${document.getElementById('name').value}_CV.pdf`);
+      formData.append("mimeType", file.type);
 
       const driveResponse = await fetch(GOOGLE_SCRIPT_URL, {
         method: "POST",
-        mode: "cors",
         headers: {
-          "Content-Type": "text/plain;charset=utf-8",
+          "Content-Type": "application/x-www-form-urlencoded"
         },
-        body: JSON.stringify(payload),
-        redirect: "follow"
+        body: formData.toString()
       });
 
       const driveResult = await driveResponse.json();
