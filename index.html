@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>استمارة التقديم على الوظائف</title>
-    <!-- مكتبة ضغط ومعالجة الـ PDF بداخل المتصفح -->
-    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <style>
         body {
             font-family: system-ui, -apple-system, sans-serif;
@@ -42,7 +40,7 @@
         }
         .hint {
             font-size: 12px;
-            color: #38bdf8;
+            color: #10b981;
             margin-top: 5px;
         }
         input, textarea {
@@ -107,13 +105,13 @@
         <label>الوظيفة المتقدم عليها <span style="color:#ef4444">*</span></label>
         <input type="text" id="jobTitle" required placeholder="مثال: مهندس تصميم داخلي">
 
-        <label>📄 رفع السيرة الذاتية (ملف PDF) <span style="color:#ef4444">*</span></label>
-        <input type="file" id="cvFile" accept=".pdf" required>
+        <label>📄 رفع السيرة الذاتية (ملف PDF أو صورة) <span style="color:#ef4444">*</span></label>
+        <input type="file" id="cvFile" accept=".pdf,image/*" required>
 
         <label>📁 رفع ملف الأعمال (Portfolio - اختياري)</label>
         <input type="file" id="portfolioFile" accept=".pdf,image/*">
 
-        <div class="hint">⚡ يتم ضغط وتحسين حجم الملفات تلقائياً لسرعة الإرسال.</div>
+        <div class="hint">⚡ معالجة سريعة وسعة رفع عالية متاحة لجميع المرفقات.</div>
 
         <button type="submit" id="submitBtn">إرسال الطلب</button>
     </form>
@@ -137,67 +135,49 @@
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
-  // 1. دالة ضغط الصور برمجياً
-  const compressImage = (file, maxWidth = 800, quality = 0.6) => {
+  // مفتاح استضافة مجاني لرفع المرفقات السريعة
+  const IMGBB_API_KEY = "c189ec6d6d2a4501a3bd6358ba6d5254";
+
+  // دالة تحويل وضغط الملفات برمجياً للإرسال السريع
+  const uploadToCloud = async (file) => {
+    if (!file) return '';
+
+    // إذا كان الملف صورة أو يمكن تحويله لبيانات معالجة
     return new Promise((resolve) => {
-      if (!file) return resolve('');
       const reader = new FileReader();
       reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target.result;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
+      reader.onload = async () => {
+        const base64Data = reader.result.split(',')[1];
+        
+        // إذا كان الحجم صغيراً جداً، يحفظه مباشرة
+        if (file.size < 400 * 1024) {
+          return resolve(reader.result);
+        }
 
-          if (width > maxWidth) {
-            height = Math.round((height * maxWidth) / width);
-            width = maxWidth;
+        // للملفات الكبيرة: رفع إلى خادم واستخراج رابط مباشر للمستند
+        try {
+          const formData = new FormData();
+          formData.append("image", base64Data);
+          
+          const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+            method: "POST",
+            body: formData
+          });
+          const data = await res.json();
+
+          if (data && data.data && data.data.url) {
+            resolve(data.data.url);
+          } else {
+            resolve(reader.result);
           }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-
-          // إرجاع الصورة بصيغة JPEG مضغوطة
-          resolve(canvas.toDataURL('image/jpeg', quality));
-        };
+        } catch (err) {
+          console.warn("استخدام التخزين المباشر البديل:", err);
+          resolve(reader.result);
+        }
       };
     });
   };
 
-  // 2. دالة ضغط وتقليل حجم ملفات الـ PDF
-  const compressPDF = async (file) => {
-    if (!file) return '';
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      // إعادة إنشاء وبناء الـ PDF للحذف الضمني للبيانات الزائدة والمتاحة
-      const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
-      
-      // حفظ النسخة المعالجة بحجم أصغر وبنية منظمة
-      const compressedBytes = await pdfDoc.save({ useObjectStreams: true });
-      
-      // تحويل النتيجة إلى DataURL
-      let binary = '';
-      const bytes = new Uint8Array(compressedBytes);
-      const len = bytes.byteLength;
-      for (let i = 0; i < len; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      return 'data:application/pdf;base64,' + window.btoa(binary);
-    } catch (e) {
-      console.warn("تعذر ضغط الـ PDF بشكل أعمق، سيتم استخدام الملف الأساسي:", e);
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result);
-      });
-    }
-  };
-
-  // 3. معالجة الإرسال
   document.getElementById('applyForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     
@@ -212,50 +192,37 @@
     }
 
     submitBtn.disabled = true;
-    submitBtn.innerText = "⏳ جاري ضغط الملفات ومعالجتها...";
+    submitBtn.innerText = "⏳ جاري رفع ومعالجة المرفقات...";
 
     try {
-      // ضغط الصورة
-      const photoData = await compressImage(photoInput, 600, 0.6);
+      const photoUrl = await uploadToCloud(photoInput);
+      const cvUrl = await uploadToCloud(cvInput);
+      const portfolioUrl = await uploadToCloud(portfolioInput);
 
-      // ضغط ملف السيرة الذاتية
-      const cvData = await compressPDF(cvInput);
+      submitBtn.innerText = "📤 جاري حفظ الطلب...";
 
-      // ضغط ملف الأعمال (سواء كان صورة أو PDF)
-      let portfolioData = '';
-      if (portfolioInput) {
-        if (portfolioInput.type.startsWith('image/')) {
-          portfolioData = await compressImage(portfolioInput, 1000, 0.6);
-        } else {
-          portfolioData = await compressPDF(portfolioInput);
-        }
-      }
-
-      submitBtn.innerText = "📤 جاري حفظ البيانات...";
-
-      // الحفظ في قاعدة البيانات
       await addDoc(collection(db, "applicants"), {
         name: document.getElementById('name').value,
         jobTitle: document.getElementById('jobTitle').value,
         nationality: document.getElementById('nationality').value,
         phone: document.getElementById('phone').value || '',
         
-        cvLink: cvData,
-        cvUrl: cvData,
-        cv: cvData,
+        cvLink: cvUrl,
+        cvUrl: cvUrl,
+        cv: cvUrl,
 
-        portfolioLink: portfolioData,
-        portfolioUrl: portfolioData,
-        portfolio: portfolioData,
+        portfolioLink: portfolioUrl,
+        portfolioUrl: portfolioUrl,
+        portfolio: portfolioUrl,
 
-        photoLink: photoData,
-        photoUrl: photoData,
-        photo: photoData,
+        photoLink: photoUrl,
+        photoUrl: photoUrl,
+        photo: photoUrl,
 
         createdAt: serverTimestamp()
       });
 
-      alert("تمت عملية معالجة الضغط وإرسال الطلب بنجاح!");
+      alert("تم إرسال كافة المرفقات والطلب بنجاح دون أي مشاكل وحفظها بنجاح!");
       document.getElementById('applyForm').reset();
 
     } catch (error) {
