@@ -30,9 +30,13 @@
         h2 { text-align: center; color: #38bdf8; margin-top: 0; margin-bottom: 20px; }
         label { display: block; margin-top: 15px; font-size: 14px; color: #94a3b8; }
         .hint { font-size: 12px; color: #38bdf8; margin-top: 5px; }
-        input {
+        input, select {
             width: 100%; padding: 12px; margin-top: 6px; border-radius: 6px;
             border: 1px solid #334155; background: #0f172a; color: #fff; box-sizing: border-box; font-size: 14px;
+        }
+        select option {
+            background-color: #0f172a;
+            color: #fff;
         }
         input[type="file"] { padding: 8px; background: #1e293b; cursor: pointer; }
         button {
@@ -64,7 +68,14 @@
         <input type="tel" id="phone" placeholder="05xxxxxxxx">
 
         <label>الوظيفة المتقدم عليها <span style="color:#ef4444">*</span></label>
-        <input type="text" id="jobTitle" required>
+        <select id="jobTitle" required>
+            <option value="" disabled selected>اختر الوظيفة...</option>
+            <option value="محاسب">محاسب</option>
+            <option value="محاسب تكاليف">محاسب تكاليف</option>
+            <option value="مهندس تصميم داخلي">مهندس تصميم داخلي</option>
+            <option value="مهندس مدني">مهندس مدني</option>
+            <option value="مهندس معماري">مهندس معماري</option>
+        </select>
 
         <label>📄 رفع السيرة الذاتية (ملف PDF أو صورة) <span style="color:#ef4444">*</span></label>
         <input type="file" id="cvFile" accept=".pdf,image/*" required>
