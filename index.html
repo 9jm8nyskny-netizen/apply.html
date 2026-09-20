@@ -110,17 +110,11 @@
     </form>
 </div>
 
-<!-- نموذج خفي وإطار خفي لنقل الملف بأمان -->
-<iframe name="upload_target" id="upload_target" style="display:none;"></iframe>
-<form id="hiddenDriveForm" method="POST" action="https://script.google.com/macros/s/AKfycbwoEAKNTDKDrSnqJjHHdCA8bQ-BPvP-040zAqbxT5Vw8WjL5XOw5K2EqoQOZIMu40f8AA/exec" target="upload_target" style="display:none;">
-    <input type="hidden" name="file" id="h_file">
-    <input type="hidden" name="fileName" id="h_fileName">
-    <input type="hidden" name="mimeType" id="h_mimeType">
-</form>
-
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
   import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwoEAKNTDKDrSnqJjHHdCA8bQ-BPvP-040zAqbxT5Vw8WjL5XOw5K2EqoQOZIMu40f8AA/exec";
 
   const firebaseConfig = {
     apiKey: "AIzaSyB_hSgJqz3REmSLVaa8XHC6z874xpwTags",
@@ -143,15 +137,6 @@
     reader.onerror = (error) => reject(error);
   });
 
-  let resolveDriveUpload = null;
-
-  // استقبال رابط الملف فور انتهاء الرفع من السكربت
-  window.addEventListener("message", (event) => {
-    if (event.data && resolveDriveUpload) {
-      resolveDriveUpload(event.data);
-    }
-  });
-
   document.getElementById('applyForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     
@@ -171,36 +156,41 @@
       const base64File = await fileToBase64(file);
       const fileName = `${document.getElementById('name').value}_CV.pdf`;
 
-      document.getElementById('h_file').value = base64File;
-      document.getElementById('h_fileName').value = fileName;
-      document.getElementById('h_mimeType').value = file.type;
-
-      // رفع الملف وتلقي الرابط
-      const uploadPromise = new Promise((resolve) => {
-        resolveDriveUpload = resolve;
-        document.getElementById('hiddenDriveForm').submit();
+      // إعداد البيانات
+      const payload = JSON.stringify({
+        file: base64File,
+        fileName: fileName,
+        mimeType: file.type
       });
 
-      const uploadResult = await uploadPromise;
+      // رفع الملف بنمط text/plain لتفادي حظر الشبكة CORS تماماً
+      const driveResponse = await fetch(GOOGLE_SCRIPT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8"
+        },
+        body: payload
+      });
 
-      if (uploadResult.status !== 'success' || !uploadResult.fileUrl) {
-        throw new Error(uploadResult.message || "فشل رفع الملف");
+      const result = await driveResponse.json();
+
+      if (result.status !== "success") {
+        throw new Error(result.message || "فشل رفع السيرة الذاتية");
       }
 
-      const generatedCvUrl = uploadResult.fileUrl;
+      const generatedCvUrl = result.fileUrl;
 
       submitBtn.innerText = "جاري حفظ الطلب...";
-
       const portfolioVal = document.getElementById('portfolioLink').value.trim();
 
-      // حفظ بيانات الطلب ورابط السيرة الذاتية المباشر في Firebase
+      // حفظ الطلب في فايربيس
       await addDoc(collection(db, "applicants"), {
         name: document.getElementById('name').value,
         jobTitle: document.getElementById('jobTitle').value,
         nationality: document.getElementById('nationality').value,
         phone: document.getElementById('phone').value || '',
-
-        // إرسال الرابط لكافة المسميات لضمان عمل زر "فتح السيرة الذاتية"
+        
+        // إرسال الرابط المباشر
         cvLink: generatedCvUrl,
         cvUrl: generatedCvUrl,
         cv: generatedCvUrl,
@@ -208,7 +198,6 @@
         portfolioLink: portfolioVal,
         portfolioUrl: portfolioVal,
         portfolio: portfolioVal,
-
         photoLink: document.getElementById('photoLink').value || '',
         createdAt: serverTimestamp()
       });
