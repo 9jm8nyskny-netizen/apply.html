@@ -38,11 +38,6 @@
             font-size: 14px;
             color: #94a3b8;
         }
-        .hint {
-            font-size: 11px;
-            color: #64748b;
-            margin-top: 4px;
-        }
         input, textarea {
             width: 100%;
             padding: 12px;
@@ -53,6 +48,11 @@
             color: #fff;
             box-sizing: border-box;
             font-size: 14px;
+        }
+        input[type="file"] {
+            padding: 8px;
+            background: #1e293b;
+            cursor: pointer;
         }
         input:focus, textarea:focus {
             outline: none;
@@ -100,16 +100,23 @@
         <label>الوظيفة المتقدم عليها <span style="color:#ef4444">*</span></label>
         <input type="text" id="jobTitle" required placeholder="مثال: مهندس تصميم داخلي">
 
-        <label>📄 رابط السيرة الذاتية (CV) <span style="color:#ef4444">*</span></label>
-        <input type="url" id="cvLink" required placeholder="رابط Google Drive أو LinkedIn">
-        <div class="hint">الصقي رابط مشاركة الملف من Google Drive (تأكدي أن إعداد المشاركة "أي شخص لديه الرابط")، أو رابط LinkedIn.</div>
+        <label>📄 رفع السيرة الذاتية (ملف PDF) <span style="color:#ef4444">*</span></label>
+        <input type="file" id="cvFile" accept=".pdf" required>
 
-        <label>📁 رابط ملف الأعمال (Portfolio)</label>
+        <label>📁 رابط ملف الأعمال (Portfolio - اختياري)</label>
         <input type="url" id="portfolioLink" placeholder="رابط Google Drive أو LinkedIn">
 
         <button type="submit" id="submitBtn">إرسال الطلب</button>
     </form>
 </div>
+
+<!-- نموذج خفي وإطار خفي لنقل الملف بأمان -->
+<iframe name="upload_target" id="upload_target" style="display:none;"></iframe>
+<form id="hiddenDriveForm" method="POST" action="https://script.google.com/macros/s/AKfycbwoEAKNTDKDrSnqJjHHdCA8bQ-BPvP-040zAqbxT5Vw8WjL5XOw5K2EqoQOZIMu40f8AA/exec" target="upload_target" style="display:none;">
+    <input type="hidden" name="file" id="h_file">
+    <input type="hidden" name="fileName" id="h_fileName">
+    <input type="hidden" name="mimeType" id="h_mimeType">
+</form>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
@@ -129,43 +136,89 @@
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
+  const fileToBase64 = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = (error) => reject(error);
+  });
+
+  let resolveDriveUpload = null;
+
+  // استقبال رابط الملف فور انتهاء الرفع من السكربت
+  window.addEventListener("message", (event) => {
+    if (event.data && resolveDriveUpload) {
+      resolveDriveUpload(event.data);
+    }
+  });
+
   document.getElementById('applyForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     
     const submitBtn = document.getElementById('submitBtn');
-    submitBtn.disabled = true;
-    submitBtn.innerText = "جاري حفظ الطلب...";
+    const fileInput = document.getElementById('cvFile');
+    const file = fileInput.files[0];
 
-    const userCvLink = document.getElementById('cvLink').value.trim();
-    const userPortfolioLink = document.getElementById('portfolioLink').value.trim();
+    if (!file) {
+      alert("يرجى اختيار ملف السيرة الذاتية.");
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.innerText = "جاري رفع السيرة الذاتية...";
 
     try {
+      const base64File = await fileToBase64(file);
+      const fileName = `${document.getElementById('name').value}_CV.pdf`;
+
+      document.getElementById('h_file').value = base64File;
+      document.getElementById('h_fileName').value = fileName;
+      document.getElementById('h_mimeType').value = file.type;
+
+      // رفع الملف وتلقي الرابط
+      const uploadPromise = new Promise((resolve) => {
+        resolveDriveUpload = resolve;
+        document.getElementById('hiddenDriveForm').submit();
+      });
+
+      const uploadResult = await uploadPromise;
+
+      if (uploadResult.status !== 'success' || !uploadResult.fileUrl) {
+        throw new Error(uploadResult.message || "فشل رفع الملف");
+      }
+
+      const generatedCvUrl = uploadResult.fileUrl;
+
+      submitBtn.innerText = "جاري حفظ الطلب...";
+
+      const portfolioVal = document.getElementById('portfolioLink').value.trim();
+
+      // حفظ بيانات الطلب ورابط السيرة الذاتية المباشر في Firebase
       await addDoc(collection(db, "applicants"), {
         name: document.getElementById('name').value,
         jobTitle: document.getElementById('jobTitle').value,
         nationality: document.getElementById('nationality').value,
         phone: document.getElementById('phone').value || '',
-        
-        // إرسال الرابط بكافة الأسماء المحتملة لضمان توافقه الكامل مع اللوحة
-        cvLink: userCvLink,
-        cvUrl: userCvLink,
-        cv: userCvLink,
 
-        // إرسال ملف الأعمال بكافة الأسماء المحتملة
-        portfolioLink: userPortfolioLink,
-        portfolioUrl: userPortfolioLink,
-        portfolio: userPortfolioLink,
+        // إرسال الرابط لكافة المسميات لضمان عمل زر "فتح السيرة الذاتية"
+        cvLink: generatedCvUrl,
+        cvUrl: generatedCvUrl,
+        cv: generatedCvUrl,
+
+        portfolioLink: portfolioVal,
+        portfolioUrl: portfolioVal,
+        portfolio: portfolioVal,
 
         photoLink: document.getElementById('photoLink').value || '',
         createdAt: serverTimestamp()
       });
 
-      alert("تم إرسال طلبك بنجاح!");
+      alert("تم إرسال طلبك ورفع السيرة الذاتية بنجاح!");
       document.getElementById('applyForm').reset();
 
     } catch (error) {
       console.error("خطأ: ", error);
-      alert("حدث خطأ أثناء حفظ البيانات: " + error.message);
+      alert("حدث خطأ أثناء الإرسال: " + error.message);
     } finally {
       submitBtn.disabled = false;
       submitBtn.innerText = "إرسال الطلب";
