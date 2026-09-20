@@ -38,6 +38,11 @@
             font-size: 14px;
             color: #94a3b8;
         }
+        .hint {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 4px;
+        }
         input, textarea {
             width: 100%;
             padding: 12px;
@@ -48,11 +53,6 @@
             color: #fff;
             box-sizing: border-box;
             font-size: 14px;
-        }
-        input[type="file"] {
-            padding: 8px;
-            background: #1e293b;
-            cursor: pointer;
         }
         input:focus, textarea:focus {
             outline: none;
@@ -85,35 +85,31 @@
 <div class="form-card">
     <h2>تقديم طلب توظيف</h2>
     <form id="applyForm">
-        <label>الاسم الكامل</label>
-        <input type="text" id="name" required placeholder="مثال: محمد أحمد">
+        <label>🖼️ رابط الصورة الشخصية (اختياري)</label>
+        <input type="url" id="photoLink" placeholder="https://...">
 
-        <label>المسمى الوظيفي</label>
-        <input type="text" id="jobTitle" required placeholder="مثال: مهندس مدني">
+        <label>الاسم <span style="color:#ef4444">*</span></label>
+        <input type="text" id="name" required placeholder="مثال: رمضان حسن احمد">
 
-        <label>الجنسية</label>
-        <input type="text" id="nationality" required placeholder="مثال: مصري / سوداني">
+        <label>🌍 الجنسية</label>
+        <input type="text" id="nationality" required placeholder="مثال: مصري">
 
-        <label>نبذة مختصرة</label>
-        <textarea id="bio" rows="3" placeholder="اكتب نبذة مختصرة عن خبراتك..."></textarea>
+        <label>رقم الجوال</label>
+        <input type="tel" id="phone" placeholder="05xxxxxxxx">
 
-        <label>رفع السيرة الذاتية (ملف PDF)</label>
-        <input type="file" id="cvFile" accept=".pdf" required>
+        <label>الوظيفة المتقدم عليها <span style="color:#ef4444">*</span></label>
+        <input type="text" id="jobTitle" required placeholder="مثال: مهندس تصميم داخلي">
 
-        <label>رابط الصورة الشخصية (اختياري)</label>
-        <input type="url" id="photoLink" placeholder="رابط صورة مباشر أو من Drive">
+        <label>📄 رابط السيرة الذاتية (CV) <span style="color:#ef4444">*</span></label>
+        <input type="url" id="cvLink" required placeholder="رابط Google Drive أو LinkedIn">
+        <div class="hint">الصقي رابط مشاركة الملف من Google Drive (تأكدي أن إعداد المشاركة "أي شخص لديه الرابط")، أو رابط LinkedIn.</div>
+
+        <label>📁 رابط ملف الأعمال (Portfolio)</label>
+        <input type="url" id="portfolioLink" placeholder="رابط Google Drive أو LinkedIn">
 
         <button type="submit" id="submitBtn">إرسال الطلب</button>
     </form>
 </div>
-
-<!-- نموذج خفي وإطار خفي لرفع الملفات بدون مشكلة CORS -->
-<iframe name="hidden_iframe" id="hidden_iframe" style="display:none;"></iframe>
-<form id="driveUploadForm" method="POST" action="https://script.google.com/macros/s/AKfycbwoEAKNTDKDrSnqJjHHdCA8bQ-BPvP-040zAqbxT5Vw8WjL5XOw5K2EqoQOZIMu40f8AA/exec" target="hidden_iframe" style="display:none;">
-    <input type="hidden" name="file" id="drive_file">
-    <input type="hidden" name="fileName" id="drive_fileName">
-    <input type="hidden" name="mimeType" id="drive_mimeType">
-</form>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
@@ -133,77 +129,43 @@
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
-  const fileToBase64 = (file) => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = (error) => reject(error);
-  });
-
-  let currentResolve = null;
-
-  // الاستماع لانتهاء عملية الرفع بداخل الإطار الخفي
-  document.getElementById('hidden_iframe').addEventListener('load', function() {
-    if (currentResolve) {
-      currentResolve();
-    }
-  });
-
   document.getElementById('applyForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     
     const submitBtn = document.getElementById('submitBtn');
-    const fileInput = document.getElementById('cvFile');
-    const file = fileInput.files[0];
-
-    if (!file) {
-      alert("يرجى اختيار ملف السيرة الذاتية (PDF).");
-      return;
-    }
-
     submitBtn.disabled = true;
-    submitBtn.innerText = "جاري رفع الملف إلى Google Drive...";
+    submitBtn.innerText = "جاري حفظ الطلب...";
+
+    const userCvLink = document.getElementById('cvLink').value.trim();
+    const userPortfolioLink = document.getElementById('portfolioLink').value.trim();
 
     try {
-      const base64File = await fileToBase64(file);
-      const fileName = `${document.getElementById('name').value}_CV.pdf`;
-
-      // تعبئة النموذج الخفي
-      document.getElementById('drive_file').value = base64File;
-      document.getElementById('drive_fileName').value = fileName;
-      document.getElementById('drive_mimeType').value = file.type;
-
-      // إرسال الملف عبر النموذج الخفي لتفادي حظر الشبكة
-      const uploadPromise = new Promise((resolve) => {
-        currentResolve = resolve;
-        document.getElementById('driveUploadForm').submit();
-      });
-
-      await uploadPromise;
-
-      submitBtn.innerText = "جاري حفظ الطلب...";
-
-      // بعد رفع الملف، نحفظ رابط المجلد مع اسم الملف المباشر
-      // تم إتاحة الوصول للملف بداخل المجلد
-      const searchDriveUrl = `https://drive.google.com/drive/u/0/folders/1dfpQzM5wFPj6pRp7Pe9o83CqwHcB1Cda`;
-
       await addDoc(collection(db, "applicants"), {
         name: document.getElementById('name').value,
         jobTitle: document.getElementById('jobTitle').value,
         nationality: document.getElementById('nationality').value,
-        bio: document.getElementById('bio').value,
-        cvLink: searchDriveUrl,
-        cvFileName: fileName,
+        phone: document.getElementById('phone').value || '',
+        
+        // إرسال الرابط بكافة الأسماء المحتملة لضمان توافقه الكامل مع اللوحة
+        cvLink: userCvLink,
+        cvUrl: userCvLink,
+        cv: userCvLink,
+
+        // إرسال ملف الأعمال بكافة الأسماء المحتملة
+        portfolioLink: userPortfolioLink,
+        portfolioUrl: userPortfolioLink,
+        portfolio: userPortfolioLink,
+
         photoLink: document.getElementById('photoLink').value || '',
         createdAt: serverTimestamp()
       });
 
-      alert("تم إرسال الطلب ورفع السيرة الذاتية بنجاح إلى Google Drive!");
+      alert("تم إرسال طلبك بنجاح!");
       document.getElementById('applyForm').reset();
 
     } catch (error) {
       console.error("خطأ: ", error);
-      alert("حدث خطأ أثناء الإرسال: " + error.message);
+      alert("حدث خطأ أثناء حفظ البيانات: " + error.message);
     } finally {
       submitBtn.disabled = false;
       submitBtn.innerText = "إرسال الطلب";
