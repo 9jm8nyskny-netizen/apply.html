@@ -114,14 +114,12 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
   import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwoEAKNTDKDrSnqJjHHdCA8bQ-BPvP-040zAqbxT5Vw8WjL5XOw5K2EqoQOZIMu40f8AA/exec";
-
   const firebaseConfig = {
     apiKey: "AIzaSyB_hSgJqz3REmSLVaa8XHC6z874xpwTags",
     authDomain: "applying-for-a-job-bf297.firebaseapp.com",
     databaseURL: "https://applying-for-a-job-bf297-default-rtdb.firebaseio.com",
     projectId: "applying-for-a-job-bf297",
-    storageBucket: "applying-for-a-job-bf297.firebasestorage.app",
+    storageBucket: "applying-for-a-job-bf297.appspot.com",
     messagingSenderId: "247056217136",
     appId: "1:247056217136:web:407a197e219db579c7a9f5",
     measurementId: "G-1XG4K2JMJG"
@@ -130,7 +128,8 @@
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
-  const fileToBase64 = (file) => new Promise((resolve, reject) => {
+  // تحويل ملف PDF إلى Data URL لقراءته مباشرة من المتصفح
+  const fileToDataURL = (file) => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = () => resolve(reader.result);
@@ -149,51 +148,32 @@
       return;
     }
 
+    // التحقق من حجم الملف (تنبيه إذا كان أكبر من 5 ميجابايت)
+    if (file.size > 5 * 1024 * 1024) {
+      alert("حجم ملف السيرة الذاتية كبير جداً، يرجى اختيار ملف بحجم أقل من 5 ميجابايت.");
+      return;
+    }
+
     submitBtn.disabled = true;
-    submitBtn.innerText = "جاري رفع السيرة الذاتية...";
+    submitBtn.innerText = "جاري تجهيز وإرسال الطلب...";
 
     try {
-      const base64File = await fileToBase64(file);
-      const fileName = `${document.getElementById('name').value}_CV.pdf`;
+      // تحويل الملف لنص
+      const cvDataUrl = await fileToDataURL(file);
 
-      // إعداد البيانات
-      const payload = JSON.stringify({
-        file: base64File,
-        fileName: fileName,
-        mimeType: file.type
-      });
-
-      // رفع الملف بنمط text/plain لتفادي حظر الشبكة CORS تماماً
-      const driveResponse = await fetch(GOOGLE_SCRIPT_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/plain;charset=utf-8"
-        },
-        body: payload
-      });
-
-      const result = await driveResponse.json();
-
-      if (result.status !== "success") {
-        throw new Error(result.message || "فشل رفع السيرة الذاتية");
-      }
-
-      const generatedCvUrl = result.fileUrl;
-
-      submitBtn.innerText = "جاري حفظ الطلب...";
       const portfolioVal = document.getElementById('portfolioLink').value.trim();
 
-      // حفظ الطلب في فايربيس
+      // حفظ البيانات بداخل Firestore مباشرة وبدون الاستعانة بـ Storage
       await addDoc(collection(db, "applicants"), {
         name: document.getElementById('name').value,
         jobTitle: document.getElementById('jobTitle').value,
         nationality: document.getElementById('nationality').value,
         phone: document.getElementById('phone').value || '',
         
-        // إرسال الرابط المباشر
-        cvLink: generatedCvUrl,
-        cvUrl: generatedCvUrl,
-        cv: generatedCvUrl,
+        // حفظ ملف الـ PDF كاملاً كنص قابل للفتح
+        cvLink: cvDataUrl,
+        cvUrl: cvDataUrl,
+        cv: cvDataUrl,
 
         portfolioLink: portfolioVal,
         portfolioUrl: portfolioVal,
@@ -202,12 +182,12 @@
         createdAt: serverTimestamp()
       });
 
-      alert("تم إرسال طلبك ورفع السيرة الذاتية بنجاح!");
+      alert("تم إرسال طلبك وسيرتك الذاتية بنجاح!");
       document.getElementById('applyForm').reset();
 
     } catch (error) {
       console.error("خطأ: ", error);
-      alert("حدث خطأ أثناء الإرسال: " + error.message);
+      alert("حدث خطأ أثناء حفظ الطلب: " + error.message);
     } finally {
       submitBtn.disabled = false;
       submitBtn.innerText = "إرسال الطلب";
