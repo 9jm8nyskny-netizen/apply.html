@@ -52,16 +52,16 @@
         <input type="file" id="photoFile" accept="image/*">
 
         <label>الاسم <span style="color:#ef4444">*</span></label>
-        <input type="text" id="name" required placeholder="مثال: رمضان حسن احمد">
+        <input type="text" id="name" required>
 
         <label>🌍 الجنسية</label>
-        <input type="text" id="nationality" required placeholder="مثال: مصري">
+        <input type="text" id="nationality" required>
 
         <label>رقم الجوال</label>
         <input type="tel" id="phone" placeholder="05xxxxxxxx">
 
         <label>الوظيفة المتقدم عليها <span style="color:#ef4444">*</span></label>
-        <input type="text" id="jobTitle" required placeholder="مثال: مهندس تصميم داخلي">
+        <input type="text" id="jobTitle" required>
 
         <label>📄 رفع السيرة الذاتية (ملف PDF أو صورة) <span style="color:#ef4444">*</span></label>
         <input type="file" id="cvFile" accept=".pdf,image/*" required>
@@ -95,7 +95,6 @@
 
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-  // معالجة وتحسين أبعاد الصورة لمنع تعليق المتصفح والشاشة السوداء
   const processFileOptimized = async (file) => {
     if (!file) return '';
 
