@@ -1,3 +1,103 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>استمارة التقديم على الوظائف</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .form-card {
+            background: #1e293b;
+            padding: 30px;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 500px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+            border: 1px solid #334155;
+        }
+        h2 {
+            text-align: center;
+            color: #38bdf8;
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-top: 15px;
+            font-size: 14px;
+            color: #94a3b8;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            margin-top: 6px;
+            border-radius: 6px;
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: #fff;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #38bdf8;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            margin-top: 25px;
+            background: #0d9488;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #14b8a6;
+        }
+    </style>
+</head>
+<body>
+
+<div class="form-card">
+    <h2>تقديم طلب توظيف</h2>
+    <form id="applyForm">
+        <label>الاسم الكامل</label>
+        <input type="text" id="name" required placeholder="مثال: محمد أحمد">
+
+        <label>المسمى الوظيفي</label>
+        <input type="text" id="jobTitle" required placeholder="مثال: مهندس مدني">
+
+        <label>الجنسية</label>
+        <input type="text" id="nationality" required placeholder="مثال: مصري / سوداني">
+
+        <label>نبذة مختصرة</label>
+        <textarea id="bio" rows="3" placeholder="حاصل على شهادة PMP متواجد في عسير..."></textarea>
+
+        <label>رابط السيرة الذاتية (Google Drive Viewer)</label>
+        <input type="url" id="cvLink" required placeholder="https://drive.google.com/file/d/...">
+
+        <label>رابط الصورة الشخصية (اختياري)</label>
+        <input type="url" id="photoLink" placeholder="رابط صورة مباشر أو من Drive">
+
+        <button type="submit" id="submitBtn">إرسال الطلب</button>
+    </form>
+</div>
+
 <!-- استدعاء وحدات Firebase عبر الـ CDN -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
@@ -28,7 +128,6 @@
     submitBtn.innerText = "جاري إرسال الطلب...";
 
     try {
-      // إرسال البيانات إلى مجموعة (applicants)
       await addDoc(collection(db, "applicants"), {
         name: document.getElementById('name').value,
         jobTitle: document.getElementById('jobTitle').value,
@@ -50,3 +149,6 @@
     }
   });
 </script>
+
+</body>
+</html>
