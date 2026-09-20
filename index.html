@@ -38,6 +38,11 @@
             font-size: 14px;
             color: #94a3b8;
         }
+        .hint {
+            font-size: 12px;
+            color: #f59e0b;
+            margin-top: 4px;
+        }
         input, textarea {
             width: 100%;
             padding: 12px;
@@ -102,6 +107,7 @@
 
         <label>📄 رفع السيرة الذاتية (ملف PDF) <span style="color:#ef4444">*</span></label>
         <input type="file" id="cvFile" accept=".pdf" required>
+        <div class="hint">💡 يُرجى التأكد من أن حجم الملف أقل من 700 كيلوبايت لضمان سرعة الإرسال.</div>
 
         <label>📁 رابط ملف الأعمال (Portfolio - اختياري)</label>
         <input type="url" id="portfolioLink" placeholder="رابط Google Drive أو LinkedIn">
@@ -128,7 +134,6 @@
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
-  // تحويل ملف PDF إلى Data URL لقراءته مباشرة من المتصفح
   const fileToDataURL = (file) => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -148,9 +153,10 @@
       return;
     }
 
-    // التحقق من حجم الملف (تنبيه إذا كان أكبر من 5 ميجابايت)
-    if (file.size > 5 * 1024 * 1024) {
-      alert("حجم ملف السيرة الذاتية كبير جداً، يرجى اختيار ملف بحجم أقل من 5 ميجابايت.");
+    // Failsafe: التأكد من حجم الملف (أقل من 700 كيلوبايت)
+    const MAX_ALLOWED_SIZE = 700 * 1024; // 700 KB
+    if (file.size > MAX_ALLOWED_SIZE) {
+      alert("حجم ملف السيرة الذاتية كبير (يتجاوز 700 كيلوبايت).\n\nيرجى اختيار ملف بحجم أصغر أو ضغط الملف أولاً لضمان حفظ الطلب بنجاح.");
       return;
     }
 
@@ -158,19 +164,15 @@
     submitBtn.innerText = "جاري تجهيز وإرسال الطلب...";
 
     try {
-      // تحويل الملف لنص
       const cvDataUrl = await fileToDataURL(file);
-
       const portfolioVal = document.getElementById('portfolioLink').value.trim();
 
-      // حفظ البيانات بداخل Firestore مباشرة وبدون الاستعانة بـ Storage
       await addDoc(collection(db, "applicants"), {
         name: document.getElementById('name').value,
         jobTitle: document.getElementById('jobTitle').value,
         nationality: document.getElementById('nationality').value,
         phone: document.getElementById('phone').value || '',
         
-        // حفظ ملف الـ PDF كاملاً كنص قابل للفتح
         cvLink: cvDataUrl,
         cvUrl: cvDataUrl,
         cv: cvDataUrl,
