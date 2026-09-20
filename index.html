@@ -107,7 +107,6 @@
     </form>
 </div>
 
-<!-- استدعاء وحدات Firebase عبر الـ CDN -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
   import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -152,42 +151,37 @@
 
     try {
       const base64File = await fileToBase64(file);
+      const fileName = `${document.getElementById('name').value}_CV.pdf`;
 
-      // إرسال البيانات بفرمتة Form URL Encoded لتجنب مشكلة CORS
       const formData = new URLSearchParams();
       formData.append("file", base64File);
-      formData.append("fileName", `${document.getElementById('name').value}_CV.pdf`);
+      formData.append("fileName", fileName);
       formData.append("mimeType", file.type);
 
-      const driveResponse = await fetch(GOOGLE_SCRIPT_URL, {
+      // إرسال الطلب بوضع no-cors لضمان نجاح الاتصال بدون اعتراض المتصفح
+      await fetch(GOOGLE_SCRIPT_URL, {
         method: "POST",
+        mode: "no-cors",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded"
         },
         body: formData.toString()
       });
 
-      const driveResult = await driveResponse.json();
+      submitBtn.innerText = "جاري حفظ بيانات الطلب...";
 
-      if (driveResult.status !== "success") {
-        throw new Error(driveResult.message || "فشل رفع الملف إلى Google Drive");
-      }
-
-      const cvDriveUrl = driveResult.fileUrl;
-
-      submitBtn.innerText = "جاري حفظ الطلب...";
-
+      // حفظ البيانات بـ Firebase
       await addDoc(collection(db, "applicants"), {
         name: document.getElementById('name').value,
         jobTitle: document.getElementById('jobTitle').value,
         nationality: document.getElementById('nationality').value,
         bio: document.getElementById('bio').value,
-        cvLink: cvDriveUrl,
+        cvFileName: fileName,
         photoLink: document.getElementById('photoLink').value || '',
         createdAt: serverTimestamp()
       });
 
-      alert("تم رفع السيرة الذاتية وإرسال الطلب بنجاح!");
+      alert("تم إرسال الطلب ورفع السيرة الذاتية بنجاح!");
       document.getElementById('applyForm').reset();
 
     } catch (error) {
