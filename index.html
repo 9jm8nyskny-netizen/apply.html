@@ -137,7 +137,8 @@
       processing: "⏳ جاري تحسين المرفقات للفتح الفوري...",
       saving: "📤 جاري حفظ الطلب...",
       success: "تم إرسال الطلب والمرفقات بنجاح!",
-      error: "حدث خطأ: "
+      error: "حدث خطأ: ",
+      tooBig: "حجم المرفقات كبير جداً. الرجاء رفع ملفات أصغر أو تقليل عددها."
     },
     en: {
       pageTitle: "Job Application Form",
@@ -164,7 +165,8 @@
       processing: "⏳ Optimizing attachments...",
       saving: "📤 Saving application...",
       success: "Application and attachments submitted successfully!",
-      error: "An error occurred: "
+      error: "An error occurred: ",
+      tooBig: "The attachments are too large. Please upload smaller files or fewer files."
     }
   };
 
@@ -223,38 +225,46 @@
 
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-  const processFileOptimized = async (file) => {
+  // Firestore allows ~1,048,576 bytes per document. We keep all attachments
+  // together under this budget (characters of base64) and leave room for the text fields.
+  const TOTAL_BUDGET = 880000;
+  const WEIGHTS = { photo: 1, cv: 4, portfolio: 3 };
+
+  const loadImage = (file) => new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('IMAGE_LOAD')); };
+    img.src = url;
+  });
+
+  // Shrinks the image step by step until it fits inside its size budget
+  const fitToBudget = (source, srcW, srcH, budget) => {
+    const steps = [[1400, 0.72], [1200, 0.65], [1000, 0.58], [850, 0.5], [700, 0.45], [560, 0.4], [450, 0.35]];
+    let out = '';
+    for (const [maxDim, quality] of steps) {
+      const ratio = Math.min(1, maxDim / Math.max(srcW, srcH));
+      const w = Math.max(1, Math.round(srcW * ratio));
+      const h = Math.max(1, Math.round(srcH * ratio));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(source, 0, 0, w, h);
+      out = canvas.toDataURL('image/jpeg', quality);
+      if (out.length <= budget) return out;
+    }
+    throw new Error('TOO_BIG');
+  };
+
+  const processFileOptimized = async (file, budget) => {
     if (!file) return '';
 
     if (file.type.startsWith('image/')) {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (e) => {
-          const img = new Image();
-          img.src = e.target.result;
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const maxDimension = 1200;
-            let width = img.width;
-            let height = img.height;
-
-            if (width > height && width > maxDimension) {
-              height = Math.round((height * maxDimension) / width);
-              width = maxDimension;
-            } else if (height > maxDimension) {
-              width = Math.round((width * maxDimension) / height);
-              height = maxDimension;
-            }
-
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.65));
-          };
-        };
-      });
+      const img = await loadImage(file);
+      return fitToBudget(img, img.naturalWidth, img.naturalHeight, budget);
     }
 
     if (file.type.includes('pdf')) {
@@ -262,21 +272,24 @@
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         const page = await pdf.getPage(1);
-        
-        const viewport = page.getViewport({ scale: 1.2 });
+        const viewport = page.getViewport({ scale: 2 });
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.height = viewport.height;
         canvas.width = viewport.width;
-
         await page.render({ canvasContext: ctx, viewport: viewport }).promise;
-        return canvas.toDataURL('image/jpeg', 0.65);
+        return fitToBudget(canvas, canvas.width, canvas.height, budget);
       } catch (e) {
-        return new Promise((resolve) => {
+        if (e.message === 'TOO_BIG') throw e;
+        // fallback: raw file, only if it fits
+        const raw = await new Promise((resolve, reject) => {
           const reader = new FileReader();
-          reader.readAsDataURL(file);
           reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('READ'));
+          reader.readAsDataURL(file);
         });
+        if (raw.length > budget) throw new Error('TOO_BIG');
+        return raw;
       }
     }
     return '';
@@ -284,7 +297,7 @@
 
   document.getElementById('applyForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    
+
     const submitBtn = document.getElementById('submitBtn');
     const cvInput = document.getElementById('cvFile').files[0];
     const photoInput = document.getElementById('photoFile').files[0];
@@ -294,33 +307,33 @@
     submitBtn.innerText = t('processing');
 
     try {
+      // Split the size budget between the files that were actually uploaded
+      const present = { photo: photoInput, cv: cvInput, portfolio: portfolioInput };
+      const weightSum = Object.keys(present)
+        .filter(k => present[k])
+        .reduce((sum, k) => sum + WEIGHTS[k], 0) || 1;
+      const budgetFor = (k) => Math.floor(TOTAL_BUDGET * WEIGHTS[k] / weightSum);
+
       const [photoData, cvData, portfolioData] = await Promise.all([
-        processFileOptimized(photoInput),
-        processFileOptimized(cvInput),
-        processFileOptimized(portfolioInput)
+        processFileOptimized(photoInput, budgetFor('photo')),
+        processFileOptimized(cvInput, budgetFor('cv')),
+        processFileOptimized(portfolioInput, budgetFor('portfolio'))
       ]);
 
       submitBtn.innerText = t('saving');
 
-      // jobTitle is always saved in Arabic (option value), whatever the display language
+      // Each file is stored ONCE (before, each was stored 3 times, which tripled the size).
+      // jobTitle is always saved in Arabic (option value), whatever the display language.
       await addDoc(collection(db, "applicants"), {
         name: document.getElementById('name').value,
         jobTitle: document.getElementById('jobTitle').value,
         nationality: document.getElementById('nationality').value,
         city: document.getElementById('city').value,
         phone: document.getElementById('phone').value || '',
-        
+
         cvLink: cvData,
-        cvUrl: cvData,
-        cv: cvData,
-
         portfolioLink: portfolioData,
-        portfolioUrl: portfolioData,
-        portfolio: portfolioData,
-
         photoLink: photoData,
-        photoUrl: photoData,
-        photo: photoData,
 
         createdAt: serverTimestamp()
       });
@@ -329,7 +342,11 @@
       document.getElementById('applyForm').reset();
 
     } catch (error) {
-      alert(t('error') + error.message);
+      if (error.message === 'TOO_BIG') {
+        alert(t('tooBig'));
+      } else {
+        alert(t('error') + error.message);
+      }
     } finally {
       submitBtn.disabled = false;
       submitBtn.innerText = t('submit');
